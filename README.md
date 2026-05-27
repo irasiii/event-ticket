@@ -82,7 +82,7 @@ Go to your repo → **Settings → Secrets and variables → Actions → New rep
 | `MONGO_PASSWORD` | Password for the MongoDB `tickethub` user |
 | `JWT_SECRET` | Secret string for signing JWT tokens |
 | `EC2_APP_HOST` | Public IP of the app EC2 instance (add after first deploy) |
-| `EC2_SSH_KEY` | Full contents of your `.pem` private key file (add after first deploy) |
+| `EC2_SSH_KEY` | Full contents of your `.pem` private key file — **must include** `-----BEGIN RSA PRIVATE KEY-----` header and footer (add after first deploy) |
 
 ## Workflows
 
@@ -101,9 +101,11 @@ Triggers **manually** via `workflow_dispatch`.
 
 ### `redeploy.yml` — Deploy Code Changes
 Triggers automatically on every push to `production`, or manually via `workflow_dispatch`.
-- SSHes into the app EC2 instance
-- Pulls latest code from GitHub
-- Rebuilds the React frontend
+- SSHes into the app EC2 instance using `EC2_APP_HOST` and `EC2_SSH_KEY` secrets
+- Fetches and hard-resets to latest `origin/production` (handles force-push history)
+- Reinstalls backend dependencies
+- Deletes and rebuilds the React frontend (clean install avoids platform binary issues)
+- Copies built files to Nginx web root
 - Restarts the Node.js backend via PM2
 
 ---
@@ -138,8 +140,20 @@ mongodb_public_ip = "3.x.x.x"
 ### 4. Add the remaining secrets
 
 Once you have the app IP:
-- `EC2_APP_HOST` → the `app_public_ip` value
-- `EC2_SSH_KEY` → paste the full content of your `.pem` file
+- `EC2_APP_HOST` → the `app_public_ip` value (e.g. `54.221.x.x`)
+- `EC2_SSH_KEY` → run the command below, then paste the output into GitHub
+
+```powershell
+# Windows — copies key to clipboard
+Get-Content "$env:USERPROFILE\.ssh\event-ticketing-key.pem" -Raw | Set-Clipboard
+```
+
+The secret must include the full header and footer:
+```
+-----BEGIN RSA PRIVATE KEY-----
+MIIEo...
+-----END RSA PRIVATE KEY-----
+```
 
 These are needed for the `redeploy.yml` workflow to SSH in.
 
@@ -162,22 +176,25 @@ After the infrastructure is running, use this workflow whenever you change backe
 
 ### Automatic (recommended)
 
-Just push to the `production` branch — the `redeploy.yml` workflow runs automatically:
+Push your changes to both `main` and `production`:
 
 ```bash
 # Make your change
 git add .
 git commit -m "fix: update event booking logic"
-git push origin production
+git push origin main              # triggers CI/CD Pipeline (tests + build check)
+git push origin main:production   # triggers Redeploy App (deploys to EC2)
 ```
 
-GitHub Actions will:
+GitHub Actions `redeploy.yml` will automatically:
 1. SSH into the app EC2
-2. `git pull origin production`
-3. `npm install` (backend)
-4. `npm run build` (React frontend)
-5. Copy built files to Nginx web root
+2. `git fetch origin production && git reset --hard origin/production`
+3. `npm install --production` (backend)
+4. Clean install + `npm run build` (React frontend with Vite 4)
+5. Copy built files to `/usr/share/nginx/html/`
 6. `pm2 restart event-ticketing-api`
+
+Completes in ~30 seconds. ✅
 
 ### Manual trigger
 
