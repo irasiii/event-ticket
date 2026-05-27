@@ -22,7 +22,8 @@ jobs:
             cd ~/app
 
             echo "==> Pulling latest code..."
-            git pull origin production
+            git fetch origin production
+            git reset --hard origin/production
 
             echo "==> Installing backend dependencies..."
             cd backend && npm install --production && cd ..
