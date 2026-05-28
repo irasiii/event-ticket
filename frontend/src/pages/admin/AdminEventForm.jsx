@@ -23,6 +23,7 @@ export default function AdminEventForm() {
   });
   const [tiers, setTiers] = useState([emptyTier()]);
   const [categories, setCategories] = useState([]);
+  const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(isEdit);
   const [error, setError] = useState('');
@@ -31,6 +32,9 @@ export default function AdminEventForm() {
   useEffect(() => {
     api.get('/categories')
       .then(res => setCategories(res.data.categories || res.data))
+      .catch(() => {});
+    api.get('/venues')
+      .then(res => setVenues(res.data.venues || res.data))
       .catch(() => {});
   }, []);
 
@@ -45,8 +49,8 @@ export default function AdminEventForm() {
             category: ev.category?._id || ev.category || '',
             date: toDatetimeLocal(ev.date),
             endDate: toDatetimeLocal(ev.endDate),
-            venue: ev.venue || '',
-            city: ev.city || '',
+            venue: ev.venue?._id || ev.venue || '',
+            city: ev.city || ev.venue?.city || '',
             capacity: ev.capacity || '',
             status: ev.status || 'draft',
             bannerImage: ev.bannerImage || '',
@@ -61,6 +65,15 @@ export default function AdminEventForm() {
   }, [id, isEdit]);
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleVenueChange = e => {
+    const selectedVenue = venues.find(v => v._id === e.target.value);
+    setForm({
+      ...form,
+      venue: e.target.value,
+      city: selectedVenue?.city || form.city,
+    });
+  };
 
   const handleTierChange = (index, field, value) => {
     const updated = tiers.map((t, i) => i === index ? { ...t, [field]: value } : t);
@@ -165,7 +178,14 @@ export default function AdminEventForm() {
             <div className="grid-2">
               <div className="form-group">
                 <label>Venue *</label>
-                <input name="venue" type="text" className="form-control" value={form.venue} onChange={handleChange} required />
+                <select name="venue" className="form-control" value={form.venue} onChange={handleVenueChange} required>
+                  <option value="">Select venue...</option>
+                  {venues.map(v => (
+                    <option key={v._id} value={v._id}>
+                      {v.name} — {v.city}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
                 <label>City</label>
